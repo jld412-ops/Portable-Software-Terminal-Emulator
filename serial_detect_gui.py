@@ -7,7 +7,6 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 
-PORT = "/dev/serial0"
 #PORT = "/dev/ttyUSB0
 BAUD = 9600 #Temporary loopback for GPIO Serial Ports
 
@@ -17,6 +16,9 @@ UNITS = {"2162": {"baud": 9600, "data_bits": 8, "parity": "N", "stop_bits": 1, "
 	 "2561": {"baud": 57600, "data_bits": 8, "parity": "N", "stop_bits": 1, "flow": "N"}, }
 
 current_unit = None
+putty_process = None
+USE_USB_MODE = False
+PORT = "/dev/serial0"
 
 def serial_loopback_detected():
 	try:
@@ -40,37 +42,55 @@ def clear_screen():
 	for widget in root.winfo_children():
 		widget.destroy()
 
-serial_was_connected = serial_loopback_detected()
+
+def serial_connection_active():
+	if USE_USB_MODE:
+		return os.path.exists(USB_PORT)
+
+	return serial_loopback_detected()
+
+serial_was_connected = serial_connection_active()
 disconnect_popup_shown = False
 
 def monitor_serial_connection():
-	global serial_was_connected, disconnect_popup_shown
-	connected = serial_loopback_detected()
+	global serial_was_connected, putty_process
+	#GPIO LOOPBACK MODE, Don't test the serial port while PuTTY owns it
+	if not USE_USB_MODE:
+		if putty_process is not None and putty_process.poll() is None:
+			root.after(3000, monitor_serial_connection)
+			return
+
+	connected = serial_connection_active()
+
 	if not connected and serial_was_connected:
 		serial_was_connected = False
-		disconnect_popup_shown = True
 
-		root.lift()
-		root.attributes("-topmost", True)
-		root.update
+		#Close PuTTY if open
+		if putty_process is not None:
+			if putty_process.poll() is None:
+				putty_process.terminate()
+				putty_process = None
 
-		messagebox.showwarning("Serial Disconnected", "Serial disconnected.\n\nReconnect serial cable.")
-		root.attributes("-topmost", False)
+			root.lift()
+			root.attributes("-topmost", True)
+			root.update()
+			messagebox.showwarning("Serial Disconnected", "Serial disconnected.\n\nReconnect serial cable.")
+			root.attributes("-topmost", False)
 
-		show_no_connection_screen()
-	elif connected and not serial_was_connected:
-		serial_was_connected = True
-		disconnect_popup_shown = False
+			show_no_connection_screen()
 
-		root.lift()
-		root.attributes("-topmost", True)
-		root.update()
 
-		messagebox.showinfo("Serial Connection Detected", f"Serial connection detected on {PORT}.")
-		root.attributes("-topmost", False)
+		elif connected and not serial_was_connected:
+			serial_was_connected = True
+			root.lift()
+			root.attributes("-topmost", True)
+			root.update()
 
-		show_unit_buttons()
-	root.after(3000, monitor_serial_connection)
+			messagebox.showinfo("Serial Connection Detected", f"Serial connection detected on {PORT}.")
+			root.attributes("-topmost", False)
+
+			show_unit_buttons()
+		root.after(3000, monitor_serial_connection)
 
 def choose_unit(unit):
 	global current_unit
@@ -102,15 +122,19 @@ def show_no_connection_screen():
 	tk.Button(root, text="Retry", font=("Arial",22), width=15, height=2, command=retry_connection).pack(pady=20)
 
 def retry_connection():
-	if serial_loopback_detected():
+	global serial_was_connected
+
+	if serial_connection_active():
+		serial_was_connected = True
+
 		messagebox.showinfo("Serial Connection Detected", f"Serial connection detected on {PORT}.")
 		show_unit_buttons()
 	else:
+		serial_was_connected = False
 		messagebox.showwarning("No Serial Connection", "No serial connection detected.\n\nPlease check the cable and try again.")
 		show_no_connection_screen()
 
 def show_unit_buttons():
-	 
 	clear_screen()
 
 	tk.Label(root, text="Select Unit", font=("Arial", 24)).pack(pady=30)
@@ -169,7 +193,8 @@ def start_session():
 	print(" ".join(putty_command))
 
 	try:
-		subprocess.Popen(putty_command)
+		global putty_process
+		putty_process = subprocess.Popen(putty_command)
 	except Exception as e:
 		messagebox.showerror("PuTTY Launch Error", str(e))
 
@@ -182,7 +207,8 @@ filename_var = tk.StringVar(value="")
 
 print("Checking serial connection on /dev/serial0...")
 
-if serial_loopback_detected():
+if serial_connection_active():
+	serial_was_connected = True
 	root.lift()
 	root.attributes("-topmost",True)
 	root.update()
@@ -190,6 +216,7 @@ if serial_loopback_detected():
 	root.attributes("-topmost", False)
 	show_unit_buttons()
 else:
+	serial_was_connected = False
 	show_no_connection_screen()
 
 root.after(3000, monitor_serial_connection)
