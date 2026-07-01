@@ -19,6 +19,7 @@ current_unit = None
 putty_process = None
 USE_USB_MODE = False
 PORT = "/dev/serial0"
+USB_PORT = "/dev/ttyUSB0"
 
 def serial_loopback_detected():
 	try:
@@ -65,32 +66,28 @@ def monitor_serial_connection():
 	if not connected and serial_was_connected:
 		serial_was_connected = False
 
-		#Close PuTTY if open
-		if putty_process is not None:
-			if putty_process.poll() is None:
-				putty_process.terminate()
-				putty_process = None
+		if putty_process is not None and putty_process.poll() is None:
+			putty_process.terminate()
+			putty_process = None
 
-			root.lift()
-			root.attributes("-topmost", True)
-			root.update()
-			messagebox.showwarning("Serial Disconnected", "Serial disconnected.\n\nReconnect serial cable.")
-			root.attributes("-topmost", False)
+		root.lift()
+		root.attributes("-topmost", True)
+		root.update()
+		messagebox.showwarning("Serial Disconnected", "Serial disconnected.\n\nReconnect serial cable.")
+		root.attributes("-topmost", False)
+		show_no_connection_screen()
 
-			show_no_connection_screen()
+	elif connected and not serial_was_connected:
+		serial_was_connected = True
+		root.lift()
+		root.attributes("-topmost", True)
+		root.update()
 
+		messagebox.showinfo("Serial Connection Detected", f"Serial connection detected on {PORT}.")
+		root.attributes("-topmost", False)
+		show_unit_buttons()
 
-		elif connected and not serial_was_connected:
-			serial_was_connected = True
-			root.lift()
-			root.attributes("-topmost", True)
-			root.update()
-
-			messagebox.showinfo("Serial Connection Detected", f"Serial connection detected on {PORT}.")
-			root.attributes("-topmost", False)
-
-			show_unit_buttons()
-		root.after(3000, monitor_serial_connection)
+	root.after(3000, monitor_serial_connection)
 
 def choose_unit(unit):
 	global current_unit
