@@ -6,6 +6,7 @@ import serial
 import time
 import tkinter as tk
 from tkinter import messagebox
+from docx import Document
 
 #PORT = "/dev/ttyUSB0
 BAUD = 9600 #Temporary loopback for GPIO Serial Ports
@@ -17,8 +18,8 @@ UNITS = {"2162": {"baud": 9600, "data_bits": 8, "parity": "N", "stop_bits": 1, "
 
 current_unit = None
 putty_process = None
-USE_USB_MODE = False
-PORT = "/dev/serial0"
+USE_USB_MODE = True
+PORT = "/dev/ttyUSB0"
 USB_PORT = "/dev/ttyUSB0"
 
 def serial_loopback_detected():
@@ -42,7 +43,6 @@ def serial_loopback_detected():
 def clear_screen():
 	for widget in root.winfo_children():
 		widget.destroy()
-
 
 def serial_connection_active():
 	if USE_USB_MODE:
@@ -95,7 +95,7 @@ def choose_unit(unit):
 	settings = UNITS[unit]
 
 	clear_screen()
-	
+
 	tk.Label(root, text=f"Selected Unit: {unit}", font=("Arial", 26)).pack(pady=30)
 
 	tk.Label(root, text=f"Port: {PORT}\nBaud: {settings['baud']}", font=("Arial", 18)).pack(pady=20)
@@ -104,11 +104,15 @@ def choose_unit(unit):
 
 	tk.Button(root, text="Switch Unit", font=("Arial", 22), width=18, height=2, command=show_unit_buttons).pack(pady=15)
 
-	tk.Checkbutton(root, text="Save DSP report to txt file", variable=save_log_var, font=("Arial",18)).pack(pady=10)
+	tk.Checkbutton(root, text="Save DSP report to docx file", variable=save_log_var, font=("Arial",18)).pack(pady=10)
 
 	tk.Label(root, text="Report File Name:", font=("Arial",16)).pack(pady=5)
 
 	tk.Entry(root, textvariable=filename_var, font=("Arial",18), width=30).pack(pady=10)
+
+	tk.Label(root, text="Unit Serial Number:", font=("Arial",18)).pack(pady=5)
+
+	tk.Entry(root, textvariable=serial_number_var, font=("Arial",18), width=30).pack(pady=10)
 
 	filename_var.set(f"{unit}_DSP_Report")
 
@@ -177,14 +181,16 @@ def start_session():
 		os.makedirs("reports", exist_ok=True)
 		user_filename = filename_var.get().strip()
 		if user_filename == "":
-			timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-			user_filename = f"{current_unit}_DSP_Report_{timestamp}"
-		if not user_filename.endswith(".txt"):
-			user_filename += ".txt"
+			user_filename = f"{current_unit}_DSP_Report"
+		if not user_filename.lower().endswith(".docx"):
+			user_filename += ".docx"
 
-		log_file = f"reports/{user_filename}"
-		putty_command.extend(["-sessionlog", log_file])
-		print(f"Saving PuTTY log to: {log_file}")
+		docx_file = os.path.join("reports", user_filename)
+		temp_log = os.path.join("reports", "_temp_dsg.log")
+		putty_command.extend(["-sessionlog", temp_log])
+
+		print(f"Temporary PuTTY log: {temp_log}")
+		print(f"Final Word report: {docx_file}")
 
 	print(f"Launching PuTTY for {current_unit}")
 	print(" ".join(putty_command))
@@ -192,15 +198,60 @@ def start_session():
 	try:
 		global putty_process
 		putty_process = subprocess.Popen(putty_command)
+		putty_process.wait()
+		if save_log_var.get():
+			serial_number = serial_number_var.get().strip()
+			print("PuTTY closed")
+			print("temp_log exists:", os.path.exists(temp_log))
+			print("temp_log path:", temp_log)
+			print("docx path:", docx_file)
+			convert_log_to_docx(temp_log, docx_file, current_unit, serial_number)
+			if os.path.exists(temp_log):
+				os.remove(temp_log)
+			messagebox.showinfo("Report Saved", f"Word report saved as:\n{docx_file}")
+		root.after(1000, maximize_putty)
 	except Exception as e:
 		messagebox.showerror("PuTTY Launch Error", str(e))
 
+def maximize_putty():
+	subprocess.run([
+		"wmctrl", "-r", "PuTTY", "-b", "add,maximized_vert,maximized_horz"])
+
+def convert_log_to_docx(txt_path, docx_path, unit, serial_number):
+	document = Document()
+
+	document.add_heading("DSP Test Report", level=1)
+
+	document.add_paragraph(f"Unit: {unit}")
+	document.add_paragraph(f"Serial Number: {serial_number}")
+#	document.add_paragraph(f"Date: {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
+
+	document.add_heading("DSP Output", level=2)
+
+	try:
+		with open(log_path, "r", errors="replace") as file:
+			dsp_data = file.read()
+
+		document.add_paragraph(dsp_data)
+		document.save(docx_path)
+		print(f"Word report saved to: {docx_path}")
+	except Exception as e:
+		print(f"Error creating Word report: {e}")
+
 root = tk.Tk()
+root.tk.call('tk', 'scaling', 1.75)
 root.title("Portable DSP Emulator")
 root.geometry("800x480")
+#Maximize while keeping windows bar
+try:
+	root.attributes("-zoomed", True)
+except tk.TclError:
+	root.state("zoomed")
+
 
 save_log_var = tk.BooleanVar(value=True)
 filename_var = tk.StringVar(value="")
+serial_number_var = tk.StringVar(value="")
 
 print("Checking serial connection on /dev/serial0...")
 
