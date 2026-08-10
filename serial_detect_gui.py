@@ -8,6 +8,9 @@ import tkinter as tk
 from tkinter import messagebox
 from docx import Document
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPORTS_DIR = os.path.join(SCRIPT_DIR, "reports")
+
 #PORT = "/dev/ttyUSB0
 BAUD = 9600 #Temporary loopback for GPIO Serial Ports
 
@@ -178,19 +181,20 @@ def start_session():
 	]
 
 	if save_log_var.get():
-		os.makedirs("reports", exist_ok=True)
+		os.makedirs(REPORTS_DIR, exist_ok=True)
 		user_filename = filename_var.get().strip()
 		if user_filename == "":
 			user_filename = f"{current_unit}_DSP_Report"
 		if not user_filename.lower().endswith(".docx"):
 			user_filename += ".docx"
 
-		docx_file = os.path.join("reports", user_filename)
-		temp_log = os.path.join("reports", "_temp_dsg.log")
+		docx_file = os.path.join(REPORTS_DIR, user_filename)
+		temp_log = os.path.join(REPORTS_DIR, "_temp_dsp.log")
 		putty_command.extend(["-sessionlog", temp_log])
 
-		print(f"Temporary PuTTY log: {temp_log}")
-		print(f"Final Word report: {docx_file}")
+		print("REPORT LOGGING ENABLED")
+		print("Temporary log:", temp_log)
+		print("Final DOCX:", docx_file)
 
 	print(f"Launching PuTTY for {current_unit}")
 	print(" ".join(putty_command))
@@ -201,14 +205,27 @@ def start_session():
 		putty_process.wait()
 		if save_log_var.get():
 			serial_number = serial_number_var.get().strip()
+			print("\n========== REPORT DEBUG ==========")
 			print("PuTTY closed")
-			print("temp_log exists:", os.path.exists(temp_log))
-			print("temp_log path:", temp_log)
-			print("docx path:", docx_file)
+			print("Current working directory:", os.getcwd())
+			print("Reports directory:", REPORTS_DIR)
+			print("Temp log:", temp_log)
+			print("Temp log exists:", os.path.exists(temp_log))
+			print("DOCX  path:", docx_file)
+			print("====================\n")
+
+			if not os.path.exists(temp_log):
+				messagebox.showerror("Report Error", "PuTTY did not create the temporary DSP log.\n\n" f"Expected location:\n{temp_log}")
+				return
+
 			convert_log_to_docx(temp_log, docx_file, current_unit, serial_number)
-			if os.path.exists(temp_log):
-				os.remove(temp_log)
-			messagebox.showinfo("Report Saved", f"Word report saved as:\n{docx_file}")
+			if os.path.exists(docx_file):
+				print("SUCCESS:DOCX exists")
+				if os.path.exists(temp_log):
+					os.remove(temp_log)
+				messagebox.showinfo("Report Saved", f"Word report saved as:\n{docx_file}")
+			else:
+				messagebox.showerror("Report Error", "The Word document was not created.")
 		root.after(1000, maximize_putty)
 	except Exception as e:
 		messagebox.showerror("PuTTY Launch Error", str(e))
@@ -218,6 +235,13 @@ def maximize_putty():
 		"wmctrl", "-r", "PuTTY", "-b", "add,maximized_vert,maximized_horz"])
 
 def convert_log_to_docx(txt_path, docx_path, unit, serial_number):
+	print("Starting DOCX conversion...")
+	print("Reading temp log from:", txt_path)
+	print("Saving DOCX to:", docx_path)
+
+	if not os.path.exists(txt_path):
+		raise FileNotFoundError(f"PuTTY log was not created:\n{txt_path}")
+
 	document = Document()
 
 	document.add_heading("DSP Test Report", level=1)
@@ -228,15 +252,13 @@ def convert_log_to_docx(txt_path, docx_path, unit, serial_number):
 
 	document.add_heading("DSP Output", level=2)
 
-	try:
-		with open(log_path, "r", errors="replace") as file:
-			dsp_data = file.read()
+	with open(txt_path, "r", errors="replace") as file:
+		dsp_data = file.read()
 
-		document.add_paragraph(dsp_data)
-		document.save(docx_path)
-		print(f"Word report saved to: {docx_path}")
-	except Exception as e:
-		print(f"Error creating Word report: {e}")
+	document.add_paragraph(dsp_data)
+	document.save(docx_path)
+	print("DOCX SAVE FINISHED")
+	print("DOCX exists:", os.path.exists(docx_path))
 
 root = tk.Tk()
 root.tk.call('tk', 'scaling', 1.75)
