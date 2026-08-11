@@ -7,6 +7,7 @@ import time
 import tkinter as tk
 from tkinter import messagebox
 from docx import Document
+import re
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(SCRIPT_DIR, "reports")
@@ -189,7 +190,7 @@ def start_session():
 			user_filename += ".docx"
 
 		docx_file = os.path.join(REPORTS_DIR, user_filename)
-		temp_log = os.path.join(REPORTS_DIR, "_temp_dsp.log")
+		temp_log = "/tmp/dsp_temp.log"
 		putty_command.extend(["-sessionlog", temp_log])
 
 		print("REPORT LOGGING ENABLED")
@@ -223,7 +224,7 @@ def start_session():
 				print("SUCCESS:DOCX exists")
 				if os.path.exists(temp_log):
 					os.remove(temp_log)
-				messagebox.showinfo("Report Saved", f"Word report saved as:\n{docx_file}")
+				messagebox.showinfo("Report Saved", f"Word report saved as:\n\n{docx_file}")
 			else:
 				messagebox.showerror("Report Error", "The Word document was not created.")
 		root.after(1000, maximize_putty)
@@ -235,25 +236,19 @@ def maximize_putty():
 		"wmctrl", "-r", "PuTTY", "-b", "add,maximized_vert,maximized_horz"])
 
 def convert_log_to_docx(txt_path, docx_path, unit, serial_number):
-	print("Starting DOCX conversion...")
-	print("Reading temp log from:", txt_path)
-	print("Saving DOCX to:", docx_path)
-
-	if not os.path.exists(txt_path):
-		raise FileNotFoundError(f"PuTTY log was not created:\n{txt_path}")
-
 	document = Document()
 
 	document.add_heading("DSP Test Report", level=1)
 
 	document.add_paragraph(f"Unit: {unit}")
 	document.add_paragraph(f"Serial Number: {serial_number}")
-#	document.add_paragraph(f"Date: {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
+	document.add_paragraph(f"Date: {datetime.now().strftime('%m/%d/%Y %I:%M %p')}")
 
 	document.add_heading("DSP Output", level=2)
 
 	with open(txt_path, "r", errors="replace") as file:
 		dsp_data = file.read()
+	dsp_data = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', dsp_data)
 
 	document.add_paragraph(dsp_data)
 	document.save(docx_path)
