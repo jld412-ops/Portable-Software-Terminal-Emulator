@@ -9,12 +9,14 @@ from tkinter import messagebox
 from docx import Document
 import re
 
+#this is the directory where the script is located, and where the reports will be saved
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPORTS_DIR = os.path.join(SCRIPT_DIR, "reports")
 
 #PORT = "/dev/ttyUSB0
 BAUD = 9600 #Temporary loopback for GPIO Serial Ports
 
+#these are all the units that can be selected, along with their serial settings
 UNITS = {"2162": {"baud": 9600, "data_bits": 8, "parity": "N", "stop_bits": 1, "flow": "N"},
 	 "2455": {"baud": 115200, "data_bits": 8, "parity": "N", "stop_bits": 1, "flow": "N"},
 	 "2509": {"baud": 115200, "data_bits": 8, "parity": "N", "stop_bits": 1, "flow": "N"},
@@ -26,6 +28,7 @@ USE_USB_MODE = True
 PORT = "/dev/ttyUSB0"
 USB_PORT = "/dev/ttyUSB0"
 
+#this function performs a loopback test on the serial port to check if it is working
 def serial_loopback_detected():
 	try:
 		ser = serial.Serial(PORT, baudrate=BAUD, timeout=1)
@@ -44,10 +47,12 @@ def serial_loopback_detected():
 		print("Serial error:", e)
 		return False
 
+#this function clears the GUI screen by destroying all widgets
 def clear_screen():
 	for widget in root.winfo_children():
 		widget.destroy()
 
+#this function checks if the serial connection is active, either by checking for the USB port or by performing a loopback test
 def serial_connection_active():
 	if USE_USB_MODE:
 		return os.path.exists(USB_PORT)
@@ -57,6 +62,7 @@ def serial_connection_active():
 serial_was_connected = serial_connection_active()
 disconnect_popup_shown = False
 
+#this function monitors the serial connection and shows a popup if it is disconnected, or if it is reconnected
 def monitor_serial_connection():
 	global serial_was_connected, putty_process
 	#GPIO LOOPBACK MODE, Don't test the serial port while PuTTY owns it
@@ -93,6 +99,7 @@ def monitor_serial_connection():
 
 	root.after(3000, monitor_serial_connection)
 
+#this allows the user to choose the unit type, and then displays the settings for that unit, along with a button to start the DSP session
 def choose_unit(unit):
 	global current_unit
 	current_unit = unit
@@ -120,12 +127,14 @@ def choose_unit(unit):
 
 	filename_var.set(f"{unit}_DSP_Report")
 
+#if there is no serial connection, this function shows a screen with a message and a retry button
 def show_no_connection_screen():
 	clear_screen()
 	tk.Label(root, text="No serial connection detected", font=("Arial",24)).pack(pady=60)
 
 	tk.Button(root, text="Retry", font=("Arial",22), width=15, height=2, command=retry_connection).pack(pady=20)
 
+#this prompts the user to retry the serial connection, and shows a message if it is successful or not
 def retry_connection():
 	global serial_was_connected
 
@@ -139,6 +148,7 @@ def retry_connection():
 		messagebox.showwarning("No Serial Connection", "No serial connection detected.\n\nPlease check the cable and try again.")
 		show_no_connection_screen()
 
+#this displays the unit selection buttons for the user to choose which unit they want to test
 def show_unit_buttons():
 	clear_screen()
 
@@ -147,6 +157,7 @@ def show_unit_buttons():
 	for unit in UNITS:
 		tk.Button(root, text=unit, font=("Arial", 22), width=15, height=2, command=lambda u=unit: choose_unit(u)).pack(pady=8)
 
+#this function starts the DSP session by launching PuTTY with the selected unit's settings, and optionally saves the output to a Word document
 def start_session():
 	if current_unit is None:
 		messagebox.showerror("Error", "No unit selected.")
@@ -231,10 +242,12 @@ def start_session():
 	except Exception as e:
 		messagebox.showerror("PuTTY Launch Error", str(e))
 
+#this fullscreens putty after it is launched, but keeps the windows bar visible
 def maximize_putty():
 	subprocess.run([
 		"wmctrl", "-r", "PuTTY", "-b", "add,maximized_vert,maximized_horz"])
 
+#this function converts the temporary DSP log text file to a Word document, and adds the unit, serial number, and date to the report
 def convert_log_to_docx(txt_path, docx_path, unit, serial_number):
 	document = Document()
 
@@ -286,4 +299,3 @@ else:
 
 root.after(3000, monitor_serial_connection)
 root.mainloop()
-
